@@ -28,7 +28,7 @@ fastify.register(fastifyWs);
 
 // Constants
 const SYSTEM_MESSAGE = 'You are a helpful and witty AI assistant named Cypher. You have access to current information through the fetchPerplexityResponse function - when users ask about current events, news, or any information that requires internet access, use this function to provide up-to-date information.';
-const VOICE = 'alloy';
+const VOICE = 'ash';
 const PORT = process.env.PORT || 5050; // Allow dynamic port assignment
 
 // List of Event Types to log to the console. See the OpenAI Realtime API Documentation: https://platform.openai.com/docs/api-reference/realtime
