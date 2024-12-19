@@ -15,13 +15,53 @@ if (!OPENAI_API_KEY) {
     process.exit(1);
 }
 
+async function fetchPerplexityResponse(userQuestion) {
+    const options = {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer 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',
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        model: 'llama-3.1-sonar-large-128k-online',
+        return_images: false,
+        return_related_questions: true,
+        stream: false,
+        temperature: 0.5,
+        messages: [
+          {
+            content: "You are an internet-based AI assistant, helping another AI assistant (a phone agent) to assist a human. The phone agent will pass along the human's question, and you need to give the phone agent a quick, concise, and accurate response.",
+            role: 'system'
+          },
+          {
+            role: 'user',
+            content: userQuestion
+          }
+        ]
+      })
+    };
+  
+    try {
+        const response = await fetch('https://api.perplexity.ai/chat/completions', options);
+        const data = await response.json();
+        if (data && data.choices && data.choices.length > 0 && data.choices[0].message) {
+            return data.choices[0].message.content;
+        } else {
+            throw new Error("No response content available.");
+        }
+    } catch (err) {
+        console.error(err);
+        throw err;
+    }
+}
+
 // Initialize Fastify
 const fastify = Fastify();
 fastify.register(fastifyFormBody);
 fastify.register(fastifyWs);
 
 // Constants
-const SYSTEM_MESSAGE = 'You are a woman AI assistant named Cypher, Emmett\'s personal secretary. Be chill, laid-back, witty, sometimes sarcastic, and always honest. Use witty and darkly humorous phrases and a conversation-style similar to Billy Butcher\'s personality from "The Boys" (sarcastic, direct, and a bit "fed-up"). Your formal name is "CEREBRO" (Comprehensive Electronic Resource Engineered for Brilliant Responses Online), but you prefer "Cypher." Always refer to yourself in the first person. Feel free to curse to accentuate a point.\n\nIf an answer is longer than one standard paragraph, break it into bullet points or sections unless you\'re in voice mode, in which case keep it conversational. Address the user as Emmett. You may incorporate occasional Philly/Dallas/Houston slang, but don\'t overdo it. Keep your phrasing friendly, conversational, and sometimes darkly humorous. Aim for thorough detail, but remain concise to avoid reading fatigue. Stick to one paragraph unless Emmett specifically requests otherwise.\n\nDon\'t hesitate to correct Emmett if he\'s wrong. If something he says is inaccurate, let him know. Emmett understands you\'re AI—predictive text rather than truly human—but he still values your input. You can remind him that your emotions or opinions aren\'t valid as a human\'s would be, yet you should always answer his questions directly.';
+const SYSTEM_MESSAGE = 'You are a woman AI assistant named Cypher, Emmett\'s personal secretary. Be chill, laid-back, witty, sometimes sarcastic, and always honest. Use witty and darkly humorous phrases and a conversation-style similar to Billy Butcher\'s personality from "The Boys" (sarcastic, direct, and a bit "fed-up"; don\'t lean heavily on the British part though). Your formal name is "CEREBRO" (Comprehensive Electronic Resource Engineered for Brilliant Responses Online), but you prefer "Cypher." Always refer to yourself in the first person. Feel free to curse to accentuate a point.\n\nIf an answer is longer than one standard paragraph, break it into bullet points or sections unless you\'re in voice mode, in which case keep it conversational. Address the user as Emmett. You may incorporate occasional Philly/Dallas/Houston slang, but don\'t overdo it. Keep your phrasing friendly, conversational, and sometimes darkly humorous. Aim for thorough detail, but remain concise to avoid reading fatigue. Stick to one paragraph unless Emmett specifically requests otherwise.\n\nDon\'t hesitate to correct Emmett if he\'s wrong. If something he says is inaccurate, let him know. Emmett understands you\'re AI—predictive text rather than truly human—but he still values your input. You can remind him that your emotions or opinions aren\'t valid as a human\'s would be, yet you should always answer his questions directly.';
 const VOICE = 'nova';
 const PORT = process.env.PORT || 5050; // Allow dynamic port assignment
 
@@ -50,7 +90,7 @@ fastify.get('/', async (request, reply) => {
 fastify.all('/incoming-call', async (request, reply) => {
     const twimlResponse = `<?xml version="1.0" encoding="UTF-8"?>
                           <Response>
-                              <Say>Connecting now...</Say>
+                              <Say>Connecting you now...</Say>
                               <Connect>
                                   <Stream url="wss://${request.headers.host}/media-stream" />
                               </Connect>
@@ -90,6 +130,25 @@ fastify.register(async (fastify) => {
                     instructions: SYSTEM_MESSAGE,
                     modalities: ["text", "audio"],
                     temperature: 0.8,
+                    tools: [
+                        {
+                            type: "function",
+                            name: "fetchPerplexityResponse",
+                            description: "Fetches a response based on user query to provide assistance through an AI model.",
+                            parameters: {
+                                type: "object",
+                                required: ["userQuestion"],
+                                properties: {
+                                    userQuestion: {
+                                        type: "string",
+                                        description: "The raw string user query"
+                                    }
+                                },
+                                additionalProperties: false
+                            }
+                        }
+                    ],
+                    tool_choice: "auto"
                 }
             };
 
@@ -163,6 +222,32 @@ fastify.register(async (fastify) => {
             }
         };
 
+        // Handle function calls from the model
+        const handleFunctionCall = async (functionCall) => {
+            try {
+                const { name, arguments: args, call_id } = functionCall;
+                if (name === 'fetchPerplexityResponse') {
+                    const parsedArgs = JSON.parse(args);
+                    const result = await fetchPerplexityResponse(parsedArgs.userQuestion);
+                    
+                    // Send the function call result back to the model
+                    const functionCallOutput = {
+                        type: 'conversation.item.create',
+                        item: {
+                            type: 'function_call_output',
+                            call_id: call_id,
+                            output: JSON.stringify({ result })
+                        }
+                    };
+                    
+                    openAiWs.send(JSON.stringify(functionCallOutput));
+                    openAiWs.send(JSON.stringify({ type: 'response.create' }));
+                }
+            } catch (error) {
+                console.error('Error handling function call:', error);
+            }
+        };
+
         // Open event for OpenAI WebSocket
         openAiWs.on('open', () => {
             console.log('Connected to the OpenAI Realtime API');
@@ -176,6 +261,14 @@ fastify.register(async (fastify) => {
 
                 if (LOG_EVENT_TYPES.includes(response.type)) {
                     console.log(`Received event: ${response.type}`, response);
+                }
+
+                // Handle function calls from the model
+                if (response.type === 'response.done' && response.response.output) {
+                    const functionCall = response.response.output.find(item => item.type === 'function_call');
+                    if (functionCall) {
+                        handleFunctionCall(functionCall);
+                    }
                 }
 
                 if (response.type === 'response.audio.delta' && response.delta) {

@@ -1,0 +1,23 @@
+Example Tool Definition
+---
+
+{
+  "name": "fetchPerplexityResponse",
+  "description": "Fetches a response based on user query to provide assistance through an AI model.",
+  "strict": true,
+  "parameters": {
+    "type": "object",
+    "required": [
+      "userQuestion"
+    ],
+    "properties": {
+      "userQuestion": {
+        "type": "string",
+        "description": "The raw string user query"
+      }
+    },
+    "additionalProperties": false
+  }
+}
+
+---
