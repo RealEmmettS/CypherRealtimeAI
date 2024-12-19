@@ -31,46 +31,6 @@ const LOG_EVENT_TYPES = [
     'session.created'
 ];
 
-async function fetchPerplexityResponse(userQuestion) {
-    const options = {
-        method: 'POST',
-        headers: {
-            Authorization: 'Bearer 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',
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-            model: 'llama-3.1-sonar-large-128k-online',
-            return_images: false,
-            return_related_questions: true,
-            stream: false,
-            temperature: 0.5,
-            messages: [
-                {
-                    content: "You are an internet-based AI assistant, helping another AI assistant (a phone agent) to assist a human. The phone agent will pass along the human's question, and you need to give the phone agent a quick, concise, and accurate response.",
-                    role: 'system'
-                },
-                {
-                    role: 'user',
-                    content: userQuestion
-                }
-            ]
-        })
-    };
-
-    try {
-        const response = await fetch('https://api.perplexity.ai/chat/completions', options);
-        const data = await response.json();
-        if (data && data.choices && data.choices.length > 0 && data.choices[0].message) {
-            return data.choices[0].message.content;
-        } else {
-            throw new Error("No response content available.");
-        }
-    } catch (err) {
-        console.error(err);
-        throw err;
-    }
-}
-
 fastify.get('/', async (request, reply) => {
     reply.send({ message: 'Twilio Media Stream Server is running!' });
 });
@@ -114,27 +74,7 @@ fastify.register(async (fastify) => {
                     voice: VOICE,
                     instructions: SYSTEM_MESSAGE,
                     modalities: ["text", "audio"],
-                    temperature: 0.8,
-                    tools: [
-                        {
-                            type: "function",
-                            name: "fetchPerplexityResponse",
-                            description: "Fetches a response based on user query to provide assistance through an AI model.",
-                            strict: true,
-                            parameters: {
-                                type: "object",
-                                required: ["userQuestion"],
-                                properties: {
-                                    userQuestion: {
-                                        type: "string",
-                                        description: "The raw string user query"
-                                    }
-                                },
-                                additionalProperties: false
-                            }
-                        }
-                    ],
-                    tool_choice: "auto"
+                    temperature: 0.8
                 }
             };
 
@@ -199,30 +139,6 @@ fastify.register(async (fastify) => {
             }
         };
 
-        const handleFunctionCall = async (functionCall) => {
-            try {
-                const { name, arguments: args, call_id } = functionCall;
-                
-                if (name === 'fetchPerplexityResponse') {
-                    const parsedArgs = JSON.parse(args);
-                    const result = await fetchPerplexityResponse(parsedArgs.userQuestion);
-                    
-                    const functionCallOutput = {
-                        type: 'conversation.item.create',
-                        item: {
-                            type: 'function_call_output',
-                            call_id: call_id,
-                            output: JSON.stringify({ result })
-                        }
-                    };
-                    
-                    openAiWs.send(JSON.stringify(functionCallOutput));
-                }
-            } catch (error) {
-                console.error('Error handling function call:', error);
-            }
-        };
-
         openAiWs.on('open', () => {
             console.log('Connected to the OpenAI Realtime API');
             setTimeout(initializeSession, 100);
@@ -257,17 +173,6 @@ fastify.register(async (fastify) => {
 
                 if (response.type === 'input_audio_buffer.speech_started') {
                     handleSpeechStartedEvent();
-                }
-
-                if (response.type === 'response.done' && response.response?.output) {
-                    const functionCall = response.response.output.find(item => 
-                        item.type === 'function_call' && 
-                        item.status === 'completed'
-                    );
-                    if (functionCall) {
-                        handleFunctionCall(functionCall);
-                        openAiWs.send(JSON.stringify({ type: 'response.create' }));
-                    }
                 }
             } catch (error) {
                 console.error('Error processing OpenAI message:', error);
