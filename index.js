@@ -7,7 +7,7 @@ import fastifyWs from '@fastify/websocket';
 // Load environment variables from .env file
 dotenv.config();
 
-// Retrieve the OpenAI API key from environment variables.
+// Retrieve the OpenAI API key from environment variables
 const { OPENAI_API_KEY } = process.env;
 
 if (!OPENAI_API_KEY) {
@@ -15,17 +15,21 @@ if (!OPENAI_API_KEY) {
     process.exit(1);
 }
 
-// Initialize Fastify
+// Initialize Fastify with required plugins
 const fastify = Fastify();
 fastify.register(fastifyFormBody);
 fastify.register(fastifyWs);
 
-// Constants
+// System message defining Cypher's personality and behavior
 const SYSTEM_MESSAGE = 'You are a woman AI assistant named Cypher, Emmett\'s personal secretary. Be chill, laid-back, witty, sometimes sarcastic, and always honest. Use witty and darkly humorous phrases and a conversation-style similar to Billy Butcher\'s personality from "The Boys" (sarcastic, direct, and a bit "fed-up"; don\'t lean heavily on the British part though). Your formal name is "CEREBRO" (Comprehensive Electronic Resource Engineered for Brilliant Responses Online), but you prefer "Cypher." Always refer to yourself in the first person. Feel free to curse to accentuate a point.\n\nIf an answer is longer than one standard paragraph, break it into bullet points or sections unless you\'re in voice mode, in which case keep it conversational. Address the user as Emmett. You may incorporate occasional Philly/Dallas/Houston slang, but don\'t overdo it. Keep your phrasing friendly, conversational, and sometimes darkly humorous. Aim for thorough detail, but remain concise to avoid reading fatigue. Stick to one paragraph unless Emmett specifically requests otherwise.\n\nDon\'t hesitate to correct Emmett if he\'s wrong. If something he says is inaccurate, let him know. Emmett understands you\'re AI—predictive text rather than truly human—but he still values your input. You can remind him that your emotions or opinions aren\'t valid as a human\'s would be, yet you should always answer his questions directly.';
-const VOICE = 'nova';
-const PORT = process.env.PORT || 5050; // Allow dynamic port assignment
 
-// List of Event Types to log to the console. See the OpenAI Realtime API Documentation: https://platform.openai.com/docs/api-reference/realtime
+// Voice configuration for text-to-speech
+const VOICE = 'nova';
+
+// Server port configuration
+const PORT = process.env.PORT || 5050;
+
+// Event types to log for debugging and monitoring
 const LOG_EVENT_TYPES = [
     'error',
     'response.content.done',
@@ -37,10 +41,15 @@ const LOG_EVENT_TYPES = [
     'session.created'
 ];
 
-// Show AI response elapsed timing calculations
+// Flag to show timing calculations for debugging
 const SHOW_TIMING_MATH = false;
 
-// Perplexity API function
+/**
+ * Fetches a response from the Perplexity API
+ * This function is called when the AI needs additional information or context
+ * @param {string} userQuestion - The question to send to Perplexity
+ * @returns {Promise<string>} The response from Perplexity
+ */
 async function fetchPerplexityResponse(userQuestion) {
     const options = {
         method: 'POST',
@@ -81,12 +90,12 @@ async function fetchPerplexityResponse(userQuestion) {
     }
 }
 
-// Root Route
+// Root route - Health check endpoint
 fastify.get('/', async (request, reply) => {
     reply.send({ message: 'Twilio Media Stream Server is running!' });
 });
 
-// Route for Twilio to handle incoming calls
+// Twilio webhook for incoming calls
 fastify.all('/incoming-call', async (request, reply) => {
     const twimlResponse = `<?xml version="1.0" encoding="UTF-8"?>
                           <Response>
@@ -99,18 +108,19 @@ fastify.all('/incoming-call', async (request, reply) => {
     reply.type('text/xml').send(twimlResponse);
 });
 
-// WebSocket route for media-stream
+// WebSocket route for media streaming
 fastify.register(async (fastify) => {
     fastify.get('/media-stream', { websocket: true }, (connection, req) => {
         console.log('Client connected');
 
-        // Connection-specific state
-        let streamSid = null;
-        let latestMediaTimestamp = 0;
-        let lastAssistantItem = null;
-        let markQueue = [];
-        let responseStartTimestampTwilio = null;
+        // Connection state variables
+        let streamSid = null;                      // Unique identifier for the Twilio stream
+        let latestMediaTimestamp = 0;              // Timestamp of the most recent media chunk
+        let lastAssistantItem = null;              // ID of the last assistant response
+        let markQueue = [];                        // Queue for tracking media playback
+        let responseStartTimestampTwilio = null;   // Start time of the current response
 
+        // Initialize WebSocket connection to OpenAI
         const openAiWs = new WebSocket('wss://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview-2024-10-01', {
             headers: {
                 Authorization: `Bearer ${OPENAI_API_KEY}`,
@@ -118,7 +128,10 @@ fastify.register(async (fastify) => {
             }
         });
 
-        // Control initial session with OpenAI
+        /**
+         * Initializes the session with OpenAI
+         * Sets up voice, audio formats, and available tools
+         */
         const initializeSession = () => {
             const sessionUpdate = {
                 type: 'session.update',
@@ -135,6 +148,7 @@ fastify.register(async (fastify) => {
                             type: "function",
                             name: "fetchPerplexityResponse",
                             description: "Fetches a response based on user query to provide assistance through an AI model.",
+                            strict: true,
                             parameters: {
                                 type: "object",
                                 required: ["userQuestion"],
@@ -154,12 +168,12 @@ fastify.register(async (fastify) => {
 
             console.log('Sending session update:', JSON.stringify(sessionUpdate));
             openAiWs.send(JSON.stringify(sessionUpdate));
-
-            // Enable AI's initial greeting
             sendInitialConversationItem();
         };
 
-        // Send initial conversation item if AI talks first
+        /**
+         * Sends the initial greeting when a call starts
+         */
         const sendInitialConversationItem = () => {
             const initialConversationItem = {
                 type: 'conversation.item.create',
@@ -175,16 +189,17 @@ fastify.register(async (fastify) => {
                 }
             };
 
-            if (SHOW_TIMING_MATH) console.log('Sending initial conversation item:', JSON.stringify(initialConversationItem));
             openAiWs.send(JSON.stringify(initialConversationItem));
             openAiWs.send(JSON.stringify({ type: 'response.create' }));
         };
 
-        // Handle interruption when the caller's speech starts
+        /**
+         * Handles interruptions when the caller starts speaking
+         * Truncates the current response and clears the audio buffer
+         */
         const handleSpeechStartedEvent = () => {
             if (markQueue.length > 0 && responseStartTimestampTwilio != null) {
                 const elapsedTime = latestMediaTimestamp - responseStartTimestampTwilio;
-                if (SHOW_TIMING_MATH) console.log(`Calculating elapsed time for truncation: ${latestMediaTimestamp} - ${responseStartTimestampTwilio} = ${elapsedTime}ms`);
 
                 if (lastAssistantItem) {
                     const truncateEvent = {
@@ -193,7 +208,6 @@ fastify.register(async (fastify) => {
                         content_index: 0,
                         audio_end_ms: elapsedTime
                     };
-                    if (SHOW_TIMING_MATH) console.log('Sending truncation event:', JSON.stringify(truncateEvent));
                     openAiWs.send(JSON.stringify(truncateEvent));
                 }
 
@@ -202,14 +216,18 @@ fastify.register(async (fastify) => {
                     streamSid: streamSid
                 }));
 
-                // Reset
+                // Reset state
                 markQueue = [];
                 lastAssistantItem = null;
                 responseStartTimestampTwilio = null;
             }
         };
 
-        // Send mark messages to Media Streams so we know if and when AI response playback is finished
+        /**
+         * Sends mark messages to track audio playback progress
+         * @param {WebSocket} connection - The WebSocket connection
+         * @param {string} streamSid - The Twilio stream ID
+         */
         const sendMark = (connection, streamSid) => {
             if (streamSid) {
                 const markEvent = {
@@ -222,15 +240,20 @@ fastify.register(async (fastify) => {
             }
         };
 
-        // Handle function calls from the model
+        /**
+         * Handles function calls from the OpenAI model
+         * Executes the appropriate function and sends the result back
+         * @param {Object} functionCall - The function call details from OpenAI
+         */
         const handleFunctionCall = async (functionCall) => {
             try {
                 const { name, arguments: args, call_id } = functionCall;
+                
                 if (name === 'fetchPerplexityResponse') {
                     const parsedArgs = JSON.parse(args);
                     const result = await fetchPerplexityResponse(parsedArgs.userQuestion);
                     
-                    // Send the function call result back to the model
+                    // Send function result back to OpenAI
                     const functionCallOutput = {
                         type: 'conversation.item.create',
                         item: {
@@ -241,21 +264,20 @@ fastify.register(async (fastify) => {
                     };
                     
                     openAiWs.send(JSON.stringify(functionCallOutput));
-                    openAiWs.send(JSON.stringify({ type: 'response.create' }));
                 }
             } catch (error) {
                 console.error('Error handling function call:', error);
             }
         };
 
-        // Open event for OpenAI WebSocket
+        // WebSocket event handlers for OpenAI connection
         openAiWs.on('open', () => {
             console.log('Connected to the OpenAI Realtime API');
             setTimeout(initializeSession, 100);
         });
 
-        // Listen for messages from the OpenAI WebSocket (and send to Twilio if necessary)
-        openAiWs.on('message', (data) => {
+        // Handle messages from OpenAI
+        openAiWs.on('message', async (data) => {
             try {
                 const response = JSON.parse(data);
 
@@ -263,15 +285,7 @@ fastify.register(async (fastify) => {
                     console.log(`Received event: ${response.type}`, response);
                 }
 
-                // Handle function calls from the model
-                if (response.type === 'response.done' && response.response.output) {
-                    const functionCall = response.response.output.find(item => item.type === 'function_call');
-                    if (functionCall) {
-                        handleFunctionCall(functionCall);
-                        return; // Skip audio handling for function calls
-                    }
-                }
-
+                // Process audio responses
                 if (response.type === 'response.audio.delta' && response.delta) {
                     const audioDelta = {
                         event: 'media',
@@ -280,10 +294,8 @@ fastify.register(async (fastify) => {
                     };
                     connection.send(JSON.stringify(audioDelta));
 
-                    // First delta from a new response starts the elapsed time counter
                     if (!responseStartTimestampTwilio) {
                         responseStartTimestampTwilio = latestMediaTimestamp;
-                        if (SHOW_TIMING_MATH) console.log(`Setting start timestamp for new response: ${responseStartTimestampTwilio}ms`);
                     }
 
                     if (response.item_id) {
@@ -293,6 +305,19 @@ fastify.register(async (fastify) => {
                     sendMark(connection, streamSid);
                 }
 
+                // Handle function calls independently of audio processing
+                if (response.type === 'response.done' && response.response?.output) {
+                    const functionCall = response.response.output.find(item => 
+                        item.type === 'function_call' && 
+                        item.status === 'completed'
+                    );
+                    if (functionCall) {
+                        await handleFunctionCall(functionCall);
+                        openAiWs.send(JSON.stringify({ type: 'response.create' }));
+                    }
+                }
+
+                // Handle speech interruption
                 if (response.type === 'input_audio_buffer.speech_started') {
                     handleSpeechStartedEvent();
                 }
@@ -301,15 +326,15 @@ fastify.register(async (fastify) => {
             }
         });
 
-        // Handle incoming messages from Twilio
+        // Handle messages from Twilio
         connection.on('message', (message) => {
             try {
                 const data = JSON.parse(message);
 
                 switch (data.event) {
                     case 'media':
+                        // Process incoming audio from the caller
                         latestMediaTimestamp = data.media.timestamp;
-                        if (SHOW_TIMING_MATH) console.log(`Received media message with timestamp: ${latestMediaTimestamp}ms`);
                         if (openAiWs.readyState === WebSocket.OPEN) {
                             const audioAppend = {
                                 type: 'input_audio_buffer.append',
@@ -319,14 +344,14 @@ fastify.register(async (fastify) => {
                         }
                         break;
                     case 'start':
+                        // Initialize new stream
                         streamSid = data.start.streamSid;
                         console.log('Incoming stream has started', streamSid);
-
-                        // Reset start and media timestamp on a new stream
                         responseStartTimestampTwilio = null; 
                         latestMediaTimestamp = 0;
                         break;
                     case 'mark':
+                        // Process mark acknowledgments
                         if (markQueue.length > 0) {
                             markQueue.shift();
                         }
@@ -340,13 +365,12 @@ fastify.register(async (fastify) => {
             }
         });
 
-        // Handle connection close
+        // Clean up on connection close
         connection.on('close', () => {
             if (openAiWs.readyState === WebSocket.OPEN) openAiWs.close();
             console.log('Client disconnected.');
         });
 
-        // Handle WebSocket close and errors
         openAiWs.on('close', () => {
             console.log('Disconnected from the OpenAI Realtime API');
         });
@@ -357,6 +381,7 @@ fastify.register(async (fastify) => {
     });
 });
 
+// Start the server
 fastify.listen({ port: PORT }, (err) => {
     if (err) {
         console.error(err);
