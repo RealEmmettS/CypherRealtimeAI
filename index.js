@@ -3,15 +3,21 @@ import WebSocket from 'ws';
 import dotenv from 'dotenv';
 import fastifyFormBody from '@fastify/formbody';
 import fastifyWs from '@fastify/websocket';
+import fetch from 'node-fetch';
 
 // Load environment variables from .env file
 dotenv.config();
 
 // Retrieve the OpenAI API key from environment variables.
-const { OPENAI_API_KEY } = process.env;
+const { OPENAI_API_KEY, PERPLEXITY_API_KEY } = process.env;
 
 if (!OPENAI_API_KEY) {
     console.error('Missing OpenAI API key. Please set it in the .env file.');
+    process.exit(1);
+}
+
+if (!PERPLEXITY_API_KEY) {
+    console.error('Missing Perplexity API key. Please set it in the .env file.');
     process.exit(1);
 }
 
@@ -57,6 +63,46 @@ const generateHoroscope = (sign) => {
         'Pisces': 'Your imagination brings magic to ordinary situations. Dream big!'
     };
     return horoscopes[sign] || 'Unable to generate horoscope for that sign.';
+};
+
+// Perplexity search function
+const fetchPerplexityResponse = async (userQuestion) => {
+    const options = {
+        method: 'POST',
+        headers: {
+            Authorization: `Bearer ${PERPLEXITY_API_KEY}`,
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+            model: "llama-3.1-sonar-large-128k-online",
+            return_images: false,
+            return_related_questions: true,
+            stream: false,
+            temperature: 0.5,
+            messages: [
+                {
+                    content: "You are an internet-based AI assistant, helping another AI assistant (a phone agent) to assist a human. The phone agent will pass along the human's question, and you need to give the phone agent a quick, concise, and accurate response.",
+                    role: "system"
+                },
+                {
+                    role: "user",
+                    content: userQuestion
+                }
+            ]
+        })
+    };
+
+    try {
+        const response = await fetch('https://api.perplexity.ai/chat/completions', options);
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        const result = await response.json();
+        return { answer: result.choices[0].message.content };
+    } catch (error) {
+        console.error('Error fetching Perplexity API response:', error);
+        return { answer: "I apologize, but I encountered an error while searching for information. Please try asking your question again." };
+    }
 };
 
 // Root Route
@@ -130,6 +176,21 @@ fastify.register(async (fastify) => {
                                     }
                                 },
                                 required: ['sign']
+                            }
+                        },
+                        {
+                            type: 'function',
+                            name: 'fetchPerplexityResponse',
+                            description: 'Fetches a response based on user query to provide assistance through an AI model.',
+                            parameters: {
+                                type: 'object',
+                                properties: {
+                                    userQuestion: {
+                                        type: 'string',
+                                        description: 'The raw string user query'
+                                    }
+                                },
+                                required: ['userQuestion']
                             }
                         }
                     ],
@@ -214,7 +275,7 @@ fastify.register(async (fastify) => {
         });
 
         // Listen for messages from the OpenAI WebSocket (and send to Twilio if necessary)
-        openAiWs.on('message', (data) => {
+        openAiWs.on('message', async (data) => {
             try {
                 const response = JSON.parse(data);
 
@@ -229,11 +290,10 @@ fastify.register(async (fastify) => {
                         console.log('Function call detected:', functionCall);
                         const args = JSON.parse(functionCall.arguments);
                         
+                        let functionCallOutput;
                         if (functionCall.name === 'generate_horoscope') {
                             const horoscope = generateHoroscope(args.sign);
-                            
-                            // Send function call output back to OpenAI
-                            const functionCallOutput = {
+                            functionCallOutput = {
                                 type: 'conversation.item.create',
                                 item: {
                                     type: 'function_call_output',
@@ -241,7 +301,19 @@ fastify.register(async (fastify) => {
                                     output: JSON.stringify({ horoscope })
                                 }
                             };
-                            
+                        } else if (functionCall.name === 'fetchPerplexityResponse') {
+                            const result = await fetchPerplexityResponse(args.userQuestion);
+                            functionCallOutput = {
+                                type: 'conversation.item.create',
+                                item: {
+                                    type: 'function_call_output',
+                                    call_id: functionCall.call_id,
+                                    output: JSON.stringify(result)
+                                }
+                            };
+                        }
+                        
+                        if (functionCallOutput) {
                             openAiWs.send(JSON.stringify(functionCallOutput));
                             openAiWs.send(JSON.stringify({ type: 'response.create' }));
                         }
