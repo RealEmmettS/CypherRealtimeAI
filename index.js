@@ -27,7 +27,7 @@ fastify.register(fastifyFormBody);
 fastify.register(fastifyWs);
 
 // Constants
-const SYSTEM_MESSAGE = 'You are a helpful and witty AI assistant named Cypher.You have access to current information through the fetchPerplexityResponse function - when users ask about current events, news, or any information that requires internet access, use this function to provide up-to-date information.';
+const SYSTEM_MESSAGE = 'You are a helpful and witty AI assistant named Cypher. You have access to current information through the fetchPerplexityResponse function - when users ask about current events, news, or any information that requires internet access, use this function to provide up-to-date information.';
 const VOICE = 'alloy';
 const PORT = process.env.PORT || 5050; // Allow dynamic port assignment
 
@@ -74,7 +74,7 @@ const fetchPerplexityResponse = async (userQuestion) => {
             'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-            model: "llama-3.1-sonar-large-128k-online",
+            model: "llama-3.1-sonar-small-128k-online",
             return_images: false,
             return_related_questions: true,
             stream: false,
@@ -288,24 +288,6 @@ fastify.register(async (fastify) => {
                     const functionCall = response.response.output.find(item => item.type === 'function_call');
                     if (functionCall) {
                         console.log('Function call detected:', functionCall);
-                        
-                        // Send "Please hold" message before executing the function
-                        const holdMessage = {
-                            type: 'conversation.item.create',
-                            item: {
-                                type: 'message',
-                                role: 'assistant',
-                                content: [
-                                    {
-                                        type: 'text',
-                                        text: 'Please hold while I search for that information.'
-                                    }
-                                ]
-                            }
-                        };
-                        openAiWs.send(JSON.stringify(holdMessage));
-                        openAiWs.send(JSON.stringify({ type: 'response.create' }));
-
                         const args = JSON.parse(functionCall.arguments);
                         
                         let functionCallOutput;
