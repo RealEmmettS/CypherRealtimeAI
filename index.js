@@ -40,6 +40,25 @@ const LOG_EVENT_TYPES = [
 // Show AI response elapsed timing calculations
 const SHOW_TIMING_MATH = false;
 
+// Basic horoscope function
+const generateHoroscope = (sign) => {
+    const horoscopes = {
+        'Aries': 'Today brings exciting opportunities for leadership. Your energy is contagious!',
+        'Taurus': 'Focus on self-care today. A peaceful moment leads to valuable insights.',
+        'Gemini': 'Your communication skills shine bright today. Share your ideas freely.',
+        'Cancer': 'Trust your intuition today. Home projects bring joy and satisfaction.',
+        'Leo': 'Your creative energy is at its peak. Time to showcase your talents!',
+        'Virgo': 'Details matter today. Your analytical skills lead to important discoveries.',
+        'Libra': 'Balance and harmony are highlighted. Relationships flourish under your care.',
+        'Scorpio': 'Your determination opens new doors. Trust in your inner strength.',
+        'Sagittarius': 'Adventure calls today. Follow your curiosity to new horizons.',
+        'Capricorn': 'Your practical approach yields results. Career goals move forward.',
+        'Aquarius': 'Innovation is your key to success today. Think outside the box!',
+        'Pisces': 'Your imagination brings magic to ordinary situations. Dream big!'
+    };
+    return horoscopes[sign] || 'Unable to generate horoscope for that sign.';
+};
+
 // Root Route
 fastify.get('/', async (request, reply) => {
     reply.send({ message: 'Twilio Media Stream Server is running!' });
@@ -92,6 +111,29 @@ fastify.register(async (fastify) => {
                     instructions: SYSTEM_MESSAGE,
                     modalities: ["text", "audio"],
                     temperature: 0.8,
+                    tools: [
+                        {
+                            type: 'function',
+                            name: 'generate_horoscope',
+                            description: 'Give today\'s horoscope for an astrological sign.',
+                            parameters: {
+                                type: 'object',
+                                properties: {
+                                    sign: {
+                                        type: 'string',
+                                        description: 'The sign for the horoscope.',
+                                        enum: [
+                                            'Aries', 'Taurus', 'Gemini', 'Cancer',
+                                            'Leo', 'Virgo', 'Libra', 'Scorpio',
+                                            'Sagittarius', 'Capricorn', 'Aquarius', 'Pisces'
+                                        ]
+                                    }
+                                },
+                                required: ['sign']
+                            }
+                        }
+                    ],
+                    tool_choice: 'auto'
                 }
             };
 
@@ -178,6 +220,32 @@ fastify.register(async (fastify) => {
 
                 if (LOG_EVENT_TYPES.includes(response.type)) {
                     console.log(`Received event: ${response.type}`, response);
+                }
+
+                // Handle function calls
+                if (response.type === 'response.done' && response.response.output) {
+                    const functionCall = response.response.output.find(item => item.type === 'function_call');
+                    if (functionCall) {
+                        console.log('Function call detected:', functionCall);
+                        const args = JSON.parse(functionCall.arguments);
+                        
+                        if (functionCall.name === 'generate_horoscope') {
+                            const horoscope = generateHoroscope(args.sign);
+                            
+                            // Send function call output back to OpenAI
+                            const functionCallOutput = {
+                                type: 'conversation.item.create',
+                                item: {
+                                    type: 'function_call_output',
+                                    call_id: functionCall.call_id,
+                                    output: JSON.stringify({ horoscope })
+                                }
+                            };
+                            
+                            openAiWs.send(JSON.stringify(functionCallOutput));
+                            openAiWs.send(JSON.stringify({ type: 'response.create' }));
+                        }
+                    }
                 }
 
                 if (response.type === 'response.audio.delta' && response.delta) {
