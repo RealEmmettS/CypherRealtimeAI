@@ -288,6 +288,24 @@ fastify.register(async (fastify) => {
                     const functionCall = response.response.output.find(item => item.type === 'function_call');
                     if (functionCall) {
                         console.log('Function call detected:', functionCall);
+                        
+                        // Send "Please hold" message before executing the function
+                        const holdMessage = {
+                            type: 'conversation.item.create',
+                            item: {
+                                type: 'message',
+                                role: 'assistant',
+                                content: [
+                                    {
+                                        type: 'text',
+                                        text: 'Please hold while I search for that information.'
+                                    }
+                                ]
+                            }
+                        };
+                        openAiWs.send(JSON.stringify(holdMessage));
+                        openAiWs.send(JSON.stringify({ type: 'response.create' }));
+
                         const args = JSON.parse(functionCall.arguments);
                         
                         let functionCallOutput;
