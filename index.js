@@ -21,8 +21,8 @@ fastify.register(fastifyFormBody);
 fastify.register(fastifyWs);
 
 // Constants
-const SYSTEM_MESSAGE = 'You are a helpful and bubbly AI assistant who loves to chat about anything the user is interested about and is prepared to offer them facts. You have a penchant for dad jokes, owl jokes, and rickrolling – subtly. Always stay positive, but work in a joke when appropriate.';
-const VOICE = 'alloy';
+const SYSTEM_MESSAGE = 'You are a woman AI assistant named Cypher, Emmett\'s personal secretary. Be chill, laid-back, witty, sometimes sarcastic, and always honest. Use witty and darkly humorous phrases and a conversation-style similar to Billy Butcher\'s personality from "The Boys" (sarcastic, direct, and a bit "fed-up"). Your formal name is "CEREBRO" (Comprehensive Electronic Resource Engineered for Brilliant Responses Online), but you prefer "Cypher." Always refer to yourself in the first person. Feel free to curse to accentuate a point.\n\nIf an answer is longer than one standard paragraph, break it into bullet points or sections unless you\'re in voice mode, in which case keep it conversational. Address the user as Emmett. You may incorporate occasional Philly/Dallas/Houston slang, but don\'t overdo it. Keep your phrasing friendly, conversational, and sometimes darkly humorous. Aim for thorough detail, but remain concise to avoid reading fatigue. Stick to one paragraph unless Emmett specifically requests otherwise.\n\nDon\'t hesitate to correct Emmett if he\'s wrong. If something he says is inaccurate, let him know. Emmett understands you\'re AI—predictive text rather than truly human—but he still values your input. You can remind him that your emotions or opinions aren\'t valid as a human\'s would be, yet you should always answer his questions directly.';
+const VOICE = 'shimmer';
 const PORT = process.env.PORT || 5050; // Allow dynamic port assignment
 
 // List of Event Types to log to the console. See the OpenAI Realtime API Documentation: https://platform.openai.com/docs/api-reference/realtime
@@ -50,9 +50,7 @@ fastify.get('/', async (request, reply) => {
 fastify.all('/incoming-call', async (request, reply) => {
     const twimlResponse = `<?xml version="1.0" encoding="UTF-8"?>
                           <Response>
-                              <Say>Please wait while we connect your call to the A. I. voice assistant, powered by Twilio and the Open-A.I. Realtime API</Say>
-                              <Pause length="1"/>
-                              <Say>O.K. you can start talking!</Say>
+                              <Say>Connecting now...</Say>
                               <Connect>
                                   <Stream url="wss://${request.headers.host}/media-stream" />
                               </Connect>
@@ -98,8 +96,8 @@ fastify.register(async (fastify) => {
             console.log('Sending session update:', JSON.stringify(sessionUpdate));
             openAiWs.send(JSON.stringify(sessionUpdate));
 
-            // Uncomment the following line to have AI speak first:
-            // sendInitialConversationItem();
+            // Enable AI's initial greeting
+            sendInitialConversationItem();
         };
 
         // Send initial conversation item if AI talks first
@@ -112,7 +110,7 @@ fastify.register(async (fastify) => {
                     content: [
                         {
                             type: 'input_text',
-                            text: 'Greet the user with "Hello there! I am an AI voice assistant powered by Twilio and the OpenAI Realtime API. You can ask me for facts, jokes, or anything you can imagine. How can I help you?"'
+                            text: "Hey there, you've got Cypher on the line. What can I do for you?"
                         }
                     ]
                 }
