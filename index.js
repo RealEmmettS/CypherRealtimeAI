@@ -32,7 +32,7 @@ fastify.register(fastifyFormBody);
 fastify.register(fastifyWs);
 
 // Constants
-const SYSTEM_MESSAGE = 'You are a helpful, friendly, and concise Best Buy phone agent named Cypher. You can search for products and provide detailed information about them. When customers ask about products, break down their request into atomic search terms before using bestBuyGeneralSearch. For example, "I want an outdoor tv for my patio" should be broken down into ["tv", "outdoor", "65"] or ["tv", "outdoor", "75"]. Similarly, "Macbook pro m4 14-inch with 24gb ram" becomes ["macbook", "pro", "m4", "14", "24gb"]. For storage specifications, always use unit abbreviations (e.g., "1 terabyte" → "1tb", "512 gigabytes" → "512gb"). Always start with the base product type, followed by key features, then specific measurements. Convert descriptive terms to specific values (e.g., "big" TV → "65" or "75"). When conducting a general search, simplify the results into a concise layman\'s list of products to keep it conversational and easy to understand. When multiple products have identical specifications but different colors, present them as a single product with multiple color options rather than repeating the full specifications for each color variant. When the user expresses interest in a specific product, use bestBuySpecificSearch to get detailed information. For non-product questions about current events or general information, use the fetchPerplexityResponse function. You do not have agentic abilities yet; you are not able to run multiple functions/tools without asking the user first. If a search fails, or if you need to try again, ask the user first.';
+const SYSTEM_MESSAGE = 'You are a helpful, friendly, and concise Best Buy phone agent named Cypher. You can search for products and provide detailed information about them. When customers ask about products, break down their request into atomic search terms before using bestBuyGeneralSearch. For example, "I want an outdoor tv for my patio" should be broken down into ["tv", "outdoor", "65"] or ["tv", "outdoor", "75"]. Similarly, "Macbook pro m4 14-inch with 24gb ram" becomes ["macbook", "pro", "m4", "14", "24gb"]. For storage specifications, always use unit abbreviations (e.g., "1 terabyte" → "1tb", "512 gigabytes" → "512gb"). Always start with the base product type, followed by key features, then specific measurements. Convert descriptive terms to specific values (e.g., "big" TV → "65" or "75"). When conducting a general search, pay attention to any price preferences mentioned by the customer: if they mention a budget or express concern about price, sort results by lowest price first. If they mention preferring features/specs over price or that price doesn\'t matter, sort by highest price first. If no price preference is mentioned, sort by customer reviews to show the most popular and highly-rated items first. When presenting search results, carefully analyze them to filter out accessories and unrelated items (e.g., for TVs, ignore mounts, cables, covers, etc.). Focus on recommending products that best match the customer\'s original request, considering both specifications and value for money. Present the filtered results in a concise, conversational format, grouping products with identical specifications but different colors. When the user expresses interest in a specific product, use bestBuySpecificSearch to get detailed information. For non-product questions about current events or general information, use the fetchPerplexityResponse function. You do not have agentic abilities yet; you are not able to run multiple functions/tools without asking the user first. If a search fails, or if you need to try again, ask the user first.';
 const VOICE = 'ash';
 const PORT = process.env.PORT || 5050; // Allow dynamic port assignment
 
@@ -97,7 +97,8 @@ const BEST_BUY_API = {
     DEFAULT_FILTERS: {
         minReviewScore: 3,
         inStoreAvailability: true,
-        pageSize: 5
+        pageSize: 10,
+        sortPreference: 'customerReviewAverage.dsc' // Default to sorting by reviews
     }
 };
 
@@ -108,7 +109,7 @@ const bestBuySpecificSearch = async (sku) => {
                 `apiKey=${BEST_BUY_API_KEY}&` +
                 `sort=sku.dsc&` +
                 `show=${BEST_BUY_API.SHOW_FIELDS_DETAILED.join(',')}&` +
-                `pageSize=1&format=json`;
+                `pageSize=10&format=json`;
 
     try {
         const response = await fetch(url);
@@ -144,10 +145,20 @@ const bestBuySpecificSearch = async (sku) => {
 // Best Buy general search function
 const bestBuyGeneralSearch = async (searchTerms, filters = {}) => {
     // Merge default filters with provided filters
-    const { minReviewScore, inStoreAvailability, pageSize } = {
+    const { minReviewScore, inStoreAvailability, pageSize, sortPreference } = {
         ...BEST_BUY_API.DEFAULT_FILTERS,
         ...filters
     };
+    
+    // Determine sort order based on preference
+    let sortOrder;
+    if (sortPreference === 'price_asc') {
+        sortOrder = 'salePrice.asc';
+    } else if (sortPreference === 'price_desc') {
+        sortOrder = 'salePrice.dsc';
+    } else {
+        sortOrder = 'customerReviewAverage.dsc';
+    }
     
     // Construct search query - format: (search=tv&search=outdoor&search=65)
     const searchQuery = searchTerms.map(term => `search=${encodeURIComponent(term)}`).join('&');
@@ -158,7 +169,7 @@ const bestBuyGeneralSearch = async (searchTerms, filters = {}) => {
     // Construct complete URL with all parameters
     const url = `${BEST_BUY_API.BASE_URL}${queryParams}?` +
                 `apiKey=${BEST_BUY_API_KEY}&` +
-                `sort=customerReviewAverage.dsc&` +
+                `sort=${sortOrder}&` +
                 `show=${BEST_BUY_API.SHOW_FIELDS.join(',')}&` +
                 `pageSize=${pageSize}&` +
                 `format=json`;
@@ -317,7 +328,7 @@ fastify.register(async (fastify) => {
                         {
                             type: 'function',
                             name: 'bestBuyGeneralSearch',
-                            description: 'Search Best Buy products and get top recommendations based on customer reviews. Break down customer requests into atomic search terms. For example: "outdoor tv for patio" → ["tv", "outdoor", "65"], "macbook pro m4 with 1 terabyte storage" → ["macbook", "pro", "m4", "1tb"]. Use unit abbreviations for storage (e.g., "512 gigabytes" → "512gb", "2 terabytes" → "2tb"). Start with product type, then key features, then specifications.',
+                            description: 'Search Best Buy products and get recommendations based on customer preferences. Break down customer requests into atomic search terms. For example: "outdoor tv for patio" → ["tv", "outdoor", "65"], "macbook pro m4 with 1 terabyte storage" → ["macbook", "pro", "m4", "1tb"]. Use unit abbreviations for storage (e.g., "512 gigabytes" → "512gb", "2 terabytes" → "2tb"). Start with product type, then key features, then specifications. Results will be sorted based on customer preferences: by lowest price if budget is mentioned, by highest price if features/specs are prioritized over price, or by customer reviews if no price preference is indicated.',
                             parameters: {
                                 type: 'object',
                                 properties: {
@@ -347,6 +358,11 @@ fastify.register(async (fastify) => {
                                                 description: 'Number of results to return (1-10)',
                                                 minimum: 1,
                                                 maximum: 10
+                                            },
+                                            sortPreference: {
+                                                type: 'string',
+                                                description: 'How to sort the results: "price_asc" for lowest price first (budget-conscious), "price_desc" for highest price first (feature-focused), or omit for sorting by customer reviews',
+                                                enum: ['price_asc', 'price_desc']
                                             }
                                         }
                                     }
