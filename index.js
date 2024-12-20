@@ -76,13 +76,11 @@ const BEST_BUY_API = {
     SHOW_FIELDS: [
         'name',
         'manufacturer',
+        'color',
         'shortDescription',
-        'features.feature',
-        'customerReviewAverage',
         'regularPrice',
-        'onSale',
         'salePrice',
-        'sku'
+        'customerReviewAverage'
     ],
     SHOW_FIELDS_DETAILED: [
         'name',
@@ -173,11 +171,11 @@ const bestBuyGeneralSearch = async (searchTerms, filters = {}) => {
             products: data.products.map(product => ({
                 name: product.name,
                 manufacturer: product.manufacturer,
-                features: product.features?.map(f => f.feature) || [],
-                reviewScore: product.customerReviewAverage,
+                color: product.color,
+                description: product.shortDescription,
                 regularPrice: product.regularPrice,
                 salePrice: product.salePrice,
-                sku: product.sku
+                reviewScore: product.customerReviewAverage
             }))
         };
     } catch (error) {
