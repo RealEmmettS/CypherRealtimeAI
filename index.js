@@ -85,41 +85,14 @@ const BEST_BUY_API = {
         'sku'
     ],
     SHOW_FIELDS_DETAILED: [
-        'accessories.sku',
-        'bestSellingRank',
-        'categoryPath.name',
+        'name',
         'color',
-        'condition',
-        'customerReviewAverage',
-        'customerReviewCount',
-        'description',
         'details.name',
         'details.value',
-        'dollarSavings',
-        'features.feature',
-        'freeShipping',
-        'frequentlyPurchasedWith.sku',
-        'includedItemList.includedItem',
         'inStoreAvailability',
-        'inStoreAvailabilityText',
-        'longDescription',
-        'manufacturer',
-        'modelNumber',
-        'name',
         'onlineAvailability',
-        'onlineAvailabilityText',
-        'onSale',
-        'percentSavings',
-        'preowned',
         'regularPrice',
-        'relatedProducts.sku',
-        'salePrice',
-        'shipping',
-        'shippingCost',
-        'shortDescription',
-        'sku',
-        'type',
-        'upc'
+        'salePrice'
     ],
     DEFAULT_FILTERS: {
         minReviewScore: 3,
@@ -148,44 +121,17 @@ const bestBuySpecificSearch = async (sku) => {
             return { error: `No product found for SKU: ${sku}` };
         }
 
-        // Return the complete product object to match the API response structure
+        // Return simplified product object with essential details
         const product = data.products[0];
         return {
             product: {
-                accessories: product.accessories || [],
-                bestSellingRank: product.bestSellingRank,
-                categoryPath: product.categoryPath,
-                color: product.color,
-                condition: product.condition,
-                customerReviewAverage: product.customerReviewAverage,
-                customerReviewCount: product.customerReviewCount,
-                description: product.description,
-                details: product.details || [],
-                dollarSavings: product.dollarSavings,
-                features: product.features || [],
-                freeShipping: product.freeShipping,
-                frequentlyPurchasedWith: product.frequentlyPurchasedWith || [],
-                includedItemList: product.includedItemList || [],
-                inStoreAvailability: product.inStoreAvailability,
-                inStoreAvailabilityText: product.inStoreAvailabilityText,
-                longDescription: product.longDescription,
-                manufacturer: product.manufacturer,
-                modelNumber: product.modelNumber,
                 name: product.name,
+                color: product.color,
+                details: product.details || [],
+                inStoreAvailability: product.inStoreAvailability,
                 onlineAvailability: product.onlineAvailability,
-                onlineAvailabilityText: product.onlineAvailabilityText,
-                onSale: product.onSale,
-                percentSavings: product.percentSavings,
-                preowned: product.preowned,
                 regularPrice: product.regularPrice,
-                relatedProducts: product.relatedProducts || [],
-                salePrice: product.salePrice,
-                shipping: product.shipping,
-                shippingCost: product.shippingCost,
-                shortDescription: product.shortDescription,
-                sku: product.sku,
-                type: product.type,
-                upc: product.upc
+                salePrice: product.salePrice
             }
         };
     } catch (error) {
