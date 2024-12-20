@@ -70,17 +70,71 @@ const generateHoroscope = (sign) => {
     return horoscopes[sign] || 'Unable to generate horoscope for that sign.';
 };
 
+// Best Buy API URL components
+const BEST_BUY_API = {
+    BASE_URL: 'https://api.bestbuy.com/v1/products',
+    SHOW_FIELDS: [
+        'name',
+        'manufacturer',
+        'shortDescription',
+        'features.feature',
+        'customerReviewAverage',
+        'regularPrice',
+        'onSale',
+        'salePrice',
+        'sku'
+    ],
+    SHOW_FIELDS_DETAILED: [
+        'accessories.sku',
+        'bestSellingRank',
+        'categoryPath.name',
+        'color',
+        'condition',
+        'customerReviewAverage',
+        'customerReviewCount',
+        'description',
+        'details.name',
+        'details.value',
+        'dollarSavings',
+        'features.feature',
+        'freeShipping',
+        'frequentlyPurchasedWith.sku',
+        'includedItemList.includedItem',
+        'inStoreAvailability',
+        'inStoreAvailabilityText',
+        'longDescription',
+        'manufacturer',
+        'modelNumber',
+        'name',
+        'onlineAvailability',
+        'onlineAvailabilityText',
+        'onSale',
+        'percentSavings',
+        'preowned',
+        'regularPrice',
+        'relatedProducts.sku',
+        'salePrice',
+        'shipping',
+        'shippingCost',
+        'shortDescription',
+        'sku',
+        'type',
+        'upc'
+    ],
+    DEFAULT_FILTERS: {
+        minReviewScore: 3,
+        inStoreAvailability: true,
+        pageSize: 5
+    }
+};
+
 // Best Buy specific product search function
 const bestBuySpecificSearch = async (sku) => {
-    const url = `https://api.bestbuy.com/v1/products(sku=${sku})?` +
+    // Construct URL for specific product search
+    const url = `${BEST_BUY_API.BASE_URL}(sku=${sku})?` +
                 `apiKey=${BEST_BUY_API_KEY}&` +
                 `sort=sku.dsc&` +
-                `show=accessories.sku,bestSellingRank,categoryPath.name,color,condition,customerReviewAverage,` +
-                `customerReviewCount,description,details.name,details.value,dollarSavings,features.feature,` +
-                `freeShipping,frequentlyPurchasedWith.sku,includedItemList.includedItem,inStoreAvailability,` +
-                `inStoreAvailabilityText,longDescription,manufacturer,modelNumber,name,onlineAvailability,` +
-                `onlineAvailabilityText,onSale,percentSavings,preowned,regularPrice,relatedProducts.sku,` +
-                `salePrice,shipping,shippingCost,shortDescription,sku,type,upc&` +
+                `show=${BEST_BUY_API.SHOW_FIELDS_DETAILED.join(',')}&` +
                 `pageSize=1&format=json`;
 
     try {
@@ -94,27 +148,44 @@ const bestBuySpecificSearch = async (sku) => {
             return { error: `No product found for SKU: ${sku}` };
         }
 
+        // Return the complete product object to match the API response structure
         const product = data.products[0];
         return {
             product: {
-                name: product.name,
-                manufacturer: product.manufacturer,
-                modelNumber: product.modelNumber,
-                description: product.longDescription || product.shortDescription,
-                features: product.features?.map(f => f.feature) || [],
-                details: product.details?.map(d => ({ name: d.name, value: d.value })) || [],
-                reviewScore: product.customerReviewAverage,
-                reviewCount: product.customerReviewCount,
-                regularPrice: product.regularPrice,
-                salePrice: product.salePrice,
-                onSale: product.onSale,
+                accessories: product.accessories || [],
+                bestSellingRank: product.bestSellingRank,
+                categoryPath: product.categoryPath,
+                color: product.color,
+                condition: product.condition,
+                customerReviewAverage: product.customerReviewAverage,
+                customerReviewCount: product.customerReviewCount,
+                description: product.description,
+                details: product.details || [],
                 dollarSavings: product.dollarSavings,
-                percentSavings: product.percentSavings,
+                features: product.features || [],
+                freeShipping: product.freeShipping,
+                frequentlyPurchasedWith: product.frequentlyPurchasedWith || [],
+                includedItemList: product.includedItemList || [],
                 inStoreAvailability: product.inStoreAvailability,
                 inStoreAvailabilityText: product.inStoreAvailabilityText,
+                longDescription: product.longDescription,
+                manufacturer: product.manufacturer,
+                modelNumber: product.modelNumber,
+                name: product.name,
                 onlineAvailability: product.onlineAvailability,
                 onlineAvailabilityText: product.onlineAvailabilityText,
-                sku: product.sku
+                onSale: product.onSale,
+                percentSavings: product.percentSavings,
+                preowned: product.preowned,
+                regularPrice: product.regularPrice,
+                relatedProducts: product.relatedProducts || [],
+                salePrice: product.salePrice,
+                shipping: product.shipping,
+                shippingCost: product.shippingCost,
+                shortDescription: product.shortDescription,
+                sku: product.sku,
+                type: product.type,
+                upc: product.upc
             }
         };
     } catch (error) {
@@ -125,16 +196,23 @@ const bestBuySpecificSearch = async (sku) => {
 
 // Best Buy general search function
 const bestBuyGeneralSearch = async (searchTerms, filters = {}) => {
-    const { minReviewScore = 3, inStoreAvailability = true, pageSize = 5 } = filters;
+    // Merge default filters with provided filters
+    const { minReviewScore, inStoreAvailability, pageSize } = {
+        ...BEST_BUY_API.DEFAULT_FILTERS,
+        ...filters
+    };
     
-    // Construct query parameters
+    // Construct search query - format: (search=tv&search=outdoor&search=65)
     const searchQuery = searchTerms.map(term => `search=${encodeURIComponent(term)}`).join('&');
-    const queryParams = `(${searchQuery}&customerReviewAverage>=${minReviewScore}&inStoreAvailability=${inStoreAvailability})`;
+    
+    // Construct complete query parameters with filters
+    const queryParams = `((${searchQuery})&customerReviewAverage>=${minReviewScore}&inStoreAvailability=${inStoreAvailability})`;
 
-    const url = `https://api.bestbuy.com/v1/products${queryParams}?` +
+    // Construct complete URL with all parameters
+    const url = `${BEST_BUY_API.BASE_URL}${queryParams}?` +
                 `apiKey=${BEST_BUY_API_KEY}&` +
                 `sort=customerReviewAverage.dsc&` +
-                `show=name,manufacturer,shortDescription,features.feature,customerReviewAverage,regularPrice,onSale,salePrice,sku&` +
+                `show=${BEST_BUY_API.SHOW_FIELDS.join(',')}&` +
                 `pageSize=${pageSize}&` +
                 `format=json`;
 
