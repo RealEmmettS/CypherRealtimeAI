@@ -91,7 +91,8 @@ const BEST_BUY_API = {
         'inStoreAvailability',
         'onlineAvailability',
         'regularPrice',
-        'salePrice'
+        'salePrice',
+        'sku'
     ],
     DEFAULT_FILTERS: {
         minReviewScore: 3,
@@ -130,7 +131,8 @@ const bestBuySpecificSearch = async (sku) => {
                 inStoreAvailability: product.inStoreAvailability,
                 onlineAvailability: product.onlineAvailability,
                 regularPrice: product.regularPrice,
-                salePrice: product.salePrice
+                salePrice: product.salePrice,
+                sku: product.sku
             }
         };
     } catch (error) {
