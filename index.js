@@ -8,8 +8,8 @@ import fetch from 'node-fetch';
 // Load environment variables from .env file
 dotenv.config();
 
-// Retrieve the OpenAI API key from environment variables.
-const { OPENAI_API_KEY, PERPLEXITY_API_KEY } = process.env;
+// Retrieve API keys from environment variables
+const { OPENAI_API_KEY, PERPLEXITY_API_KEY, BEST_BUY_API_KEY } = process.env;
 
 if (!OPENAI_API_KEY) {
     console.error('Missing OpenAI API key. Please set it in the .env file.');
@@ -21,13 +21,18 @@ if (!PERPLEXITY_API_KEY) {
     process.exit(1);
 }
 
+if (!BEST_BUY_API_KEY) {
+    console.error('Missing Best Buy API key. Please set it in the .env file.');
+    process.exit(1);
+}
+
 // Initialize Fastify
 const fastify = Fastify();
 fastify.register(fastifyFormBody);
 fastify.register(fastifyWs);
 
 // Constants
-const SYSTEM_MESSAGE = 'You are a helpful and witty AI assistant named Cypher. You have access to current information through the fetchPerplexityResponse function - when users ask about current events, news, or any information that requires internet access, use this function to provide up-to-date information.';
+const SYSTEM_MESSAGE = 'You are a helpful Best Buy phone agent named Cypher. You can search for products and provide detailed information about them. When customers ask about products, use bestBuyGeneralSearch to find recommendations. When they express interest in a specific product, use bestBuySpecificSearch to get detailed information. For non-product questions about current events or general information, use the fetchPerplexityResponse function.';
 const VOICE = 'ash';
 const PORT = process.env.PORT || 5050; // Allow dynamic port assignment
 
@@ -63,6 +68,98 @@ const generateHoroscope = (sign) => {
         'Pisces': 'Your imagination brings magic to ordinary situations. Dream big!'
     };
     return horoscopes[sign] || 'Unable to generate horoscope for that sign.';
+};
+
+// Best Buy specific product search function
+const bestBuySpecificSearch = async (sku) => {
+    const url = `https://api.bestbuy.com/v1/products(sku=${sku})?` +
+                `apiKey=${BEST_BUY_API_KEY}&` +
+                `sort=sku.dsc&` +
+                `show=accessories.sku,bestSellingRank,categoryPath.name,color,condition,customerReviewAverage,` +
+                `customerReviewCount,description,details.name,details.value,dollarSavings,features.feature,` +
+                `freeShipping,frequentlyPurchasedWith.sku,includedItemList.includedItem,inStoreAvailability,` +
+                `inStoreAvailabilityText,longDescription,manufacturer,modelNumber,name,onlineAvailability,` +
+                `onlineAvailabilityText,onSale,percentSavings,preowned,regularPrice,relatedProducts.sku,` +
+                `salePrice,shipping,shippingCost,shortDescription,sku,type,upc&` +
+                `pageSize=1&format=json`;
+
+    try {
+        const response = await fetch(url);
+        if (!response.ok) {
+            throw new Error(`Best Buy API request failed with status: ${response.status}`);
+        }
+
+        const data = await response.json();
+        if (!data.products || data.products.length === 0) {
+            return { error: `No product found for SKU: ${sku}` };
+        }
+
+        const product = data.products[0];
+        return {
+            product: {
+                name: product.name,
+                manufacturer: product.manufacturer,
+                modelNumber: product.modelNumber,
+                description: product.longDescription || product.shortDescription,
+                features: product.features?.map(f => f.feature) || [],
+                details: product.details?.map(d => ({ name: d.name, value: d.value })) || [],
+                reviewScore: product.customerReviewAverage,
+                reviewCount: product.customerReviewCount,
+                regularPrice: product.regularPrice,
+                salePrice: product.salePrice,
+                onSale: product.onSale,
+                dollarSavings: product.dollarSavings,
+                percentSavings: product.percentSavings,
+                inStoreAvailability: product.inStoreAvailability,
+                inStoreAvailabilityText: product.inStoreAvailabilityText,
+                onlineAvailability: product.onlineAvailability,
+                onlineAvailabilityText: product.onlineAvailabilityText,
+                sku: product.sku
+            }
+        };
+    } catch (error) {
+        console.error('Error fetching Best Buy product details:', error);
+        return { error: "I apologize, but I encountered an error while fetching the product details. Please try again." };
+    }
+};
+
+// Best Buy general search function
+const bestBuyGeneralSearch = async (searchTerms, filters = {}) => {
+    const { minReviewScore = 3, inStoreAvailability = true, pageSize = 5 } = filters;
+    
+    // Construct query parameters
+    const searchQuery = searchTerms.map(term => `search=${encodeURIComponent(term)}`).join('&');
+    const queryParams = `(${searchQuery}&customerReviewAverage>=${minReviewScore}&inStoreAvailability=${inStoreAvailability})`;
+
+    const url = `https://api.bestbuy.com/v1/products${queryParams}?` +
+                `apiKey=${BEST_BUY_API_KEY}&` +
+                `sort=customerReviewAverage.dsc&` +
+                `show=name,manufacturer,shortDescription,features.feature,customerReviewAverage,regularPrice,onSale,salePrice,sku&` +
+                `pageSize=${pageSize}&` +
+                `format=json`;
+
+    try {
+        const response = await fetch(url);
+        if (!response.ok) {
+            throw new Error(`Best Buy API request failed with status: ${response.status}`);
+        }
+
+        const data = await response.json();
+        return {
+            products: data.products.map(product => ({
+                name: product.name,
+                manufacturer: product.manufacturer,
+                features: product.features?.map(f => f.feature) || [],
+                reviewScore: product.customerReviewAverage,
+                regularPrice: product.regularPrice,
+                salePrice: product.salePrice,
+                sku: product.sku
+            }))
+        };
+    } catch (error) {
+        console.error('Error fetching Best Buy products:', error);
+        return { error: "I apologize, but I encountered an error while searching for products. Please try your search again." };
+    }
 };
 
 // Perplexity search function
@@ -116,7 +213,6 @@ fastify.all('/incoming-call', async (request, reply) => {
     const twimlResponse = `<?xml version="1.0" encoding="UTF-8"?>
                           <Response>
                               <Say>Connecting you now...</Say>
-                              <Pause length="1"/>
                               <Connect>
                                   <Stream url="wss://${request.headers.host}/media-stream" />
                               </Connect>
@@ -175,6 +271,61 @@ fastify.register(async (fastify) => {
                                     }
                                 },
                                 required: ['sign']
+                            }
+                        },
+                        {
+                            type: 'function',
+                            name: 'bestBuySpecificSearch',
+                            description: 'Get detailed information about a specific Best Buy product using its SKU number. Use this when a customer expresses interest in a specific product from the general search results.',
+                            parameters: {
+                                type: 'object',
+                                properties: {
+                                    sku: {
+                                        type: 'number',
+                                        description: 'The SKU number of the product'
+                                    }
+                                },
+                                required: ['sku']
+                            }
+                        },
+                        {
+                            type: 'function',
+                            name: 'bestBuyGeneralSearch',
+                            description: 'Search Best Buy products and get top recommendations based on customer reviews. Use this when customers ask about products or recommendations.',
+                            parameters: {
+                                type: 'object',
+                                properties: {
+                                    searchTerms: {
+                                        type: 'array',
+                                        description: 'Keywords to search for (e.g., ["tv", "outdoor"] for outdoor TVs)',
+                                        items: {
+                                            type: 'string'
+                                        }
+                                    },
+                                    filters: {
+                                        type: 'object',
+                                        description: 'Optional filters for the search',
+                                        properties: {
+                                            minReviewScore: {
+                                                type: 'number',
+                                                description: 'Minimum customer review score (1-5)',
+                                                minimum: 1,
+                                                maximum: 5
+                                            },
+                                            inStoreAvailability: {
+                                                type: 'boolean',
+                                                description: 'Filter for in-store availability'
+                                            },
+                                            pageSize: {
+                                                type: 'number',
+                                                description: 'Number of results to return (1-10)',
+                                                minimum: 1,
+                                                maximum: 10
+                                            }
+                                        }
+                                    }
+                                },
+                                required: ['searchTerms']
                             }
                         },
                         {
@@ -298,6 +449,26 @@ fastify.register(async (fastify) => {
                                     type: 'function_call_output',
                                     call_id: functionCall.call_id,
                                     output: JSON.stringify({ horoscope })
+                                }
+                            };
+                        } else if (functionCall.name === 'bestBuySpecificSearch') {
+                            const result = await bestBuySpecificSearch(args.sku);
+                            functionCallOutput = {
+                                type: 'conversation.item.create',
+                                item: {
+                                    type: 'function_call_output',
+                                    call_id: functionCall.call_id,
+                                    output: JSON.stringify(result)
+                                }
+                            };
+                        } else if (functionCall.name === 'bestBuyGeneralSearch') {
+                            const result = await bestBuyGeneralSearch(args.searchTerms, args.filters);
+                            functionCallOutput = {
+                                type: 'conversation.item.create',
+                                item: {
+                                    type: 'function_call_output',
+                                    call_id: functionCall.call_id,
+                                    output: JSON.stringify(result)
                                 }
                             };
                         } else if (functionCall.name === 'fetchPerplexityResponse') {

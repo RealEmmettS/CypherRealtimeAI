@@ -1,0 +1,57 @@
+// General Search Tool for Best Buy API
+const fetch = require('node-fetch');
+
+// Fetch general product recommendations based on customer query
+async function fetchBestBuyGeneralProducts(searchTerms, filters = {}) {
+    const { minReviewScore = 3, inStoreAvailability = true, pageSize = 5 } = filters;
+    
+    const API_KEY = process.env.BEST_BUY_API_KEY; // Use the placeholder variable for API key
+    if (!API_KEY) {
+        throw new Error('Missing API key. Please define BEST_BUY_API_KEY in your environment variables.');
+    }
+
+    // Construct query parameters
+    const searchQuery = searchTerms.map(term => `search=${encodeURIComponent(term)}`).join('&');
+    const queryParams = `(${searchQuery}&customerReviewAverage>=${minReviewScore}&inStoreAvailability=${inStoreAvailability})`;
+
+    const url = `https://api.bestbuy.com/v1/products${queryParams}?` +
+                `apiKey=${API_KEY}&` +
+                `sort=customerReviewAverage.dsc&` +
+                `show=name,manufacturer,shortDescription,features.feature,customerReviewAverage,regularPrice,onSale,salePrice,sku&` +
+                `pageSize=${pageSize}&` +
+                `format=json`;
+
+    try {
+        const response = await fetch(url);
+        if (!response.ok) {
+            throw new Error(`Best Buy API request failed with status: ${response.status}`);
+        }
+
+        const data = await response.json();
+        return data.products.map(product => ({
+            name: product.name,
+            manufacturer: product.manufacturer,
+            features: product.features?.map(f => f.feature) || [],
+            reviewScore: product.customerReviewAverage,
+            regularPrice: product.regularPrice,
+            salePrice: product.salePrice,
+            sku: product.sku
+        }));
+    } catch (error) {
+        console.error('Error fetching Best Buy products:', error);
+        throw error;
+    }
+}
+
+// Example usage:
+(async () => {
+    const searchTerms = ["tv", "outdoor", "65"];
+    const filters = { minReviewScore: 3, inStoreAvailability: true, pageSize: 5 };
+
+    try {
+        const products = await fetchBestBuyGeneralProducts(searchTerms, filters);
+        console.log('Recommended Products:', products);
+    } catch (error) {
+        console.error('Error:', error);
+    }
+})();

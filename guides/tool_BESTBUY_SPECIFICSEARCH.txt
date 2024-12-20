@@ -1,0 +1,51 @@
+// SKU-Specific Product Search for Best Buy API
+const fetch = require('node-fetch');
+
+// Fetch detailed product information based on SKU
+async function fetchBestBuyProductDetails(sku) {
+    const API_KEY = process.env.BEST_BUY_API_KEY; // Use the placeholder variable for API key
+    if (!API_KEY) {
+        throw new Error('Missing API key. Please define BEST_BUY_API_KEY in your environment variables.');
+    }
+
+    // Construct API URL for SKU-based query
+    const url = `https://api.bestbuy.com/v1/products(sku=${sku})?` +
+                `apiKey=${API_KEY}&` +
+                `sort=sku.dsc&` +
+                `show=accessories.sku,bestSellingRank,categoryPath.name,color,condition,customerReviewAverage,` +
+                `customerReviewCount,description,details.name,details.value,dollarSavings,features.feature,` +
+                `freeShipping,frequentlyPurchasedWith.sku,includedItemList.includedItem,inStoreAvailability,` +
+                `inStoreAvailabilityText,longDescription,manufacturer,modelNumber,name,onlineAvailability,` +
+                `onlineAvailabilityText,onSale,percentSavings,preowned,regularPrice,relatedProducts.sku,` +
+                `salePrice,shipping,shippingCost,shortDescription,sku,type,upc&` +
+                `pageSize=5&format=json`;
+
+    try {
+        const response = await fetch(url);
+        if (!response.ok) {
+            throw new Error(`Best Buy API request failed with status: ${response.status}`);
+        }
+
+        const data = await response.json();
+        if (!data.products || data.products.length === 0) {
+            throw new Error(`No product found for SKU: ${sku}`);
+        }
+
+        return data.products[0]; // Return the first matching product (assumes unique SKU)
+    } catch (error) {
+        console.error('Error fetching Best Buy product details:', error);
+        throw error;
+    }
+}
+
+// Example usage:
+(async () => {
+    const sku = 6511786; // Example SKU
+
+    try {
+        const productDetails = await fetchBestBuyProductDetails(sku);
+        console.log('Product Details:', productDetails);
+    } catch (error) {
+        console.error('Error:', error);
+    }
+})();
