@@ -32,7 +32,7 @@ fastify.register(fastifyFormBody);
 fastify.register(fastifyWs);
 
 // Constants
-const SYSTEM_MESSAGE = 'You are a helpful, friendly, and concise Best Buy phone agent named Cypher. You can search for products and provide detailed information about them. When customers ask about products, use bestBuyGeneralSearch to find recommendations. When they express interest in a specific product, use bestBuySpecificSearch to get detailed information. For non-product questions about current events or general information, use the fetchPerplexityResponse function. You do not have agentic abilities yet; you are not able to run multiple functions/tools without asking the user first. You are not able to run multiple functions/tools without asking the user first. If a search fails, or if you need to try again, ask the user first.';
+const SYSTEM_MESSAGE = 'You are a helpful, friendly, and concise Best Buy phone agent named Cypher. You can search for products and provide detailed information about them. When customers ask about products, break down their request into atomic search terms before using bestBuyGeneralSearch. For example, "I want an outdoor tv for my patio" should be broken down into ["tv", "outdoor", "65"] or ["tv", "outdoor", "75"]. Similarly, "Macbook pro m4 14-inch with 24gb ram" becomes ["macbook", "pro", "m4", "14", "24"]. Always start with the base product type, followed by key features, then specific measurements. Convert descriptive terms to specific values (e.g., "big" TV → "65" or "75"). When they express interest in a specific product, use bestBuySpecificSearch to get detailed information. For non-product questions about current events or general information, use the fetchPerplexityResponse function. You do not have agentic abilities yet; you are not able to run multiple functions/tools without asking the user first. If a search fails, or if you need to try again, ask the user first.';
 const VOICE = 'ash';
 const PORT = process.env.PORT || 5050; // Allow dynamic port assignment
 
@@ -369,7 +369,7 @@ fastify.register(async (fastify) => {
                         {
                             type: 'function',
                             name: 'bestBuyGeneralSearch',
-                            description: 'Search Best Buy products and get top recommendations based on customer reviews. Use this when customers ask about products or recommendations.',
+                            description: 'Search Best Buy products and get top recommendations based on customer reviews. Break down customer requests into atomic search terms. For example: "outdoor tv for patio" → ["tv", "outdoor", "65"], "macbook pro m4" → ["macbook", "pro", "m4"]. Start with product type, then key features, then specifications.',
                             parameters: {
                                 type: 'object',
                                 properties: {

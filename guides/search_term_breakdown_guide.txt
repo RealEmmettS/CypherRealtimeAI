@@ -1,0 +1,58 @@
+# Best Buy Search Term Breakdown Guide
+
+## Overview
+When processing customer product requests, break down search terms into simple, atomic components that can be effectively used for searching. This helps ensure more accurate and relevant results.
+
+## Methodology
+
+1. Break down product requests into core components:
+   - Product type/category
+   - Key specifications
+   - Size/dimensions
+   - Technical requirements
+
+2. Examples:
+
+### Example 1: "I want an outdoor tv for my texas patio and it should be big"
+Break down into:
+- "tv"      (product type)
+- "outdoor" (key specification)
+- "65"      (size - default for "big")
+or
+- "tv"      (product type)
+- "outdoor" (key specification)
+- "75"      (size - alternative for "big")
+
+### Example 2: "Macbook pro m4 14-inch with at least 24gb of ram"
+Break down into:
+- "macbook" (product type)
+- "pro"     (model)
+- "m4"      (version)
+- "14"      (size)
+- "24"      (RAM specification)
+
+## Guidelines
+
+1. Always start with the base product type (tv, laptop, phone, etc.)
+2. Follow with key identifying features (outdoor, pro, gaming, etc.)
+3. Include specific measurements (screen size, memory, etc.)
+4. Convert descriptive terms to specific values:
+   - "big" → "65" or "75" for TVs
+   - "small" → appropriate size for product category
+   - "powerful" → relevant specs for category
+
+## Benefits
+
+- More precise search results
+- Better matching of customer needs
+- Improved product recommendations
+- Faster search processing
+- Higher customer satisfaction
+
+## Implementation Notes
+
+When implementing in the bestBuyGeneralSearch function:
+1. Process the customer's request
+2. Break down into atomic search terms
+3. Pass array of terms to the API
+4. Filter and sort results based on relevance
